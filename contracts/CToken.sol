@@ -290,6 +290,7 @@ abstract contract CToken is CTokenInterface, ExponentialNoError, TokenErrorRepor
      * @dev This function does not accrue interest before calculating the exchange rate
      * @return calculated exchange rate scaled by 1e18
      */
+    //用总的underlying除以总的ctoken数量，得到换算比例，逻辑上的含义为每个ctoken可以换取多少个underlying
     function exchangeRateStoredInternal() virtual internal view returns (uint) {
         uint _totalSupply = totalSupply;
         if (_totalSupply == 0) {
