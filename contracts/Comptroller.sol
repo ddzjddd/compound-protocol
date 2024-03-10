@@ -720,6 +720,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
                 hypothetical account liquidity in excess of collateral requirements,
      *          hypothetical account shortfall below collateral requirements)
      */
+    /*
+    *在用户进行取出或者借款的时候，计算距其最大可抵押额度的差值（价格差值）
+    */
     function getHypotheticalAccountLiquidityInternal(
         address account,
         CToken cTokenModify,
@@ -739,7 +742,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             if (oErr != 0) { // semi-opaque error code, we assume NO_ERROR == 0 is invariant between upgrades
                 return (Error.SNAPSHOT_ERROR, 0, 0);
             }
+            //获取某个抵押市场的最大抵押比例
             vars.collateralFactor = Exp({mantissa: markets[address(asset)].collateralFactorMantissa});
+            //获取某个抵押市场的CTOKEN和Underlying之间的换算比例（1CTOKEN可换算exchangeRate数量的Underlying）            
             vars.exchangeRate = Exp({mantissa: vars.exchangeRateMantissa});
 
             // Get the normalized price of the asset
@@ -750,21 +755,29 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             vars.oraclePrice = Exp({mantissa: vars.oraclePriceMantissa});
 
             // Pre-compute a conversion factor from tokens -> ether (normalized price value)
+            //得到underlying的单价；然后计算最大可借贷价值，
+            //即为总抵押物价格*最大借贷比例，可以用underlying数量*underlying价格*最大抵押比例，
+            //underlying数量=ctoken数量*exchangeRate
+            //ctoken的单价为underlying价格*exchangeRate，因为1 ctoken=exchangeRate的underlying
             vars.tokensToDenom = mul_(mul_(vars.collateralFactor, vars.exchangeRate), vars.oraclePrice);
 
             // sumCollateral += tokensToDenom * cTokenBalance
+            //通过ctoken数量计算总抵押价值
             vars.sumCollateral = mul_ScalarTruncateAddUInt(vars.tokensToDenom, vars.cTokenBalance, vars.sumCollateral);
 
             // sumBorrowPlusEffects += oraclePrice * borrowBalance
+            //通过已借underlying数量计算该市场该账户已借贷价值
             vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(vars.oraclePrice, vars.borrowBalance, vars.sumBorrowPlusEffects);
 
             // Calculate effects of interacting with cTokenModify
             if (asset == cTokenModify) {
                 // redeem effect
                 // sumBorrowPlusEffects += tokensToDenom * redeemTokens
+                //如果是redeem，则记录对借贷总价值的影响
                 vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(vars.tokensToDenom, redeemTokens, vars.sumBorrowPlusEffects);
-
+                    
                 // borrow effect
+                //如果是borrow，则记录对借贷总价值的影响
                 // sumBorrowPlusEffects += oraclePrice * borrowAmount
                 vars.sumBorrowPlusEffects = mul_ScalarTruncateAddUInt(vars.oraclePrice, borrowAmount, vars.sumBorrowPlusEffects);
             }
